@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Regression Tests</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🧪 Regression Test Suite</h1>
+      <p class="subtitle">A collection of regression tests for the project.</p>
+      <p class="subtitle"><a href="/">← QA Tools</a></p>
+    </header>
+
+    <div class="toolbar">
+      <button id="add-testcase-btn" class="toolbar-btn toolbar-btn-secondary">+ Add Test Case</button>
+      <button id="generate-report-btn" class="toolbar-btn toolbar-btn-primary">Generate Report</button>
+      <a href="report.html" target="_blank" rel="noopener" class="toolbar-btn toolbar-btn-secondary">View Report History</a>
+      <button id="clear-results-btn" class="toolbar-btn toolbar-btn-danger">Clear Results</button>
+    </div>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <h2 class="panel-heading">Test cases</h2>
+        <div id="status-filter" class="filter-bar">
+          <button class="filter-chip active" data-status="untested">Untested</button>
+          <button class="filter-chip active" data-status="pass">Pass</button>
+          <button class="filter-chip active" data-status="fail">Fail</button>
+          <button class="filter-chip active" data-status="not supported">Not Supported</button>
+        </div>
+        <ul id="testcase-list" class="testcase-list"></ul>
+      </aside>
+
+      <main id="preview" class="preview">
+        <p class="empty-state">Select a test case on the left to see its details.</p>
+      </main>
+    </div>
+
+    <datalist id="section-options"></datalist>
+
+    <script src="app.js"></script>
+  </body>
+</html>

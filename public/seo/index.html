@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SEO Analyzer — QA tool</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>🔍 SEO Analyzer</h1>
+      <p class="subtitle">Enter a page address and check its SEO. A tool for QA.</p>
+      <p class="subtitle"><a href="/">← QA Tools</a></p>
+    </header>
+
+    <div class="layout">
+      <main>
+      <form id="analyze-form">
+        <input
+          id="url-input"
+          type="text"
+          placeholder="e.g. example.com (https:// optional)"
+          autocomplete="off"
+          required
+        />
+        <button type="submit" id="submit-btn">Analyze</button>
+      </form>
+
+      <p id="status" class="status" hidden></p>
+
+      <section id="report" hidden>
+        <div class="report-header">
+          <div class="score-circle" id="score-circle">
+            <span id="score-value">0</span><small>/100</small>
+          </div>
+          <div class="report-meta">
+            <p><strong>Address:</strong> <a id="report-url" href="#" target="_blank" rel="noopener"></a></p>
+            <p>
+              <strong>HTTP code:</strong> <span id="report-status"></span>
+              &nbsp;•&nbsp;
+              <strong>Time:</strong> <span id="report-time"></span> ms
+            </p>
+          </div>
+        </div>
+
+        <ul id="checks-list" class="checks"></ul>
+      </section>
+      </main>
+
+      <aside id="history" class="sidebar" hidden>
+        <div class="history-header">
+          <h2 class="history-heading">Audit history</h2>
+          <select id="history-sort" class="history-sort">
+            <option value="date-desc">Newest</option>
+            <option value="date-asc">Oldest</option>
+            <option value="url-asc">URL A–Z</option>
+            <option value="url-desc">URL Z–A</option>
+          </select>
+        </div>
+        <ul id="history-list" class="history"></ul>
+      </aside>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
