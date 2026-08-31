@@ -14,8 +14,21 @@ step). The frontend is plain HTML/CSS/JS, no framework or bundler.
 ## Requirements
 
 - Node.js (LTS)
+- A Postgres database — this project uses [Supabase](https://supabase.com)'s
+  free tier (no credit card required), but any Postgres connection string works.
 
-## Install and run
+## Setup
+
+1. Create a free Supabase project (or use any other Postgres database).
+2. Get its connection string. **Use the Session pooler or Transaction pooler
+   connection string, not "Direct connection"** — direct connections are
+   IPv6-only, which fails on many networks (Windows without IPv6, some
+   corporate networks). The pooler connection string looks like:
+   ```
+   postgresql://postgres.xxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+   ```
+3. Copy `.env.example` to `.env` and set `DATABASE_URL` to that connection
+   string (with your real password, url-encoded if it has special characters).
 
 ```bash
 npm install
@@ -26,10 +39,12 @@ Then open the local URL printed in the terminal (default:
 `http://localhost:3000`, or the port set in `PORT`) — it opens the QA Tools
 hub, with a tile for each tool.
 
-On first run, the regression test case list is seeded from the data bundled
-in the repo (`src/regression/seedTestCases.ts`). All runtime data (SEO audit
-history, regression test cases, results, reports) is stored as JSON files
-under `data/`, which is gitignored.
+On first run, the app creates its tables automatically and seeds the
+regression test case list from the data bundled in the repo
+(`src/regression/seedTestCases.ts`). All runtime data (SEO audit history,
+regression test cases, results, reports) lives in that one Postgres
+database — locally and in production alike, so nothing is lost between
+runs or deploys.
 
 For development with auto-restart on file changes:
 
@@ -43,6 +58,12 @@ npm run dev
 npm test
 ```
 
+Tests run against the **same database** as `DATABASE_URL` points to (there's
+no separate test database). They're written to only touch rows they create
+themselves — with random IDs, cleaned up afterwards — so they're safe to run
+against the real data. Test files run one at a time (`--test-concurrency=1`)
+to avoid racing on first-time table creation.
+
 Typecheck:
 
 ```bash
@@ -54,6 +75,7 @@ npm run typecheck
 | Path | What it is |
 |------|------------|
 | `src/server.ts` | Single Express app: serves the UI + both tools' `/api/*` routes |
+| `src/db.ts` | Shared Postgres connection pool + table creation (`initSchema`) |
 | `src/seo/` | SEO Analyzer logic (`analyzer.ts`, `url.ts`, `storage.ts`, `types.ts`) |
 | `src/regression/` | Regression suite logic (`testCaseStore.ts`, `storage.ts`, `reports.ts`, `seedTestCases.ts`, `types.ts`) |
 | `public/index.html` | QA Tools landing page |

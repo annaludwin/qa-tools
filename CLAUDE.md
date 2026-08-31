@@ -13,6 +13,16 @@ Frontend: czysty HTML/CSS/JS w `public/`, bez frameworka/buildu.
 API obu narzędzi żyje pod wspólnym serwerem, rozdzielone prefiksami:
 `/api/seo/*` i `/api/regression/*`.
 
+### Dane — Postgres (Supabase), nie pliki
+Wszystkie dane (historia SEO, test case'y, wyniki, raporty) trzymane są w
+jednej bazie Postgres (connection string w `DATABASE_URL`, plik `.env`,
+gitignored) — **lokalnie i na produkcji to ta sama baza**. Tabele tworzą się
+same przy starcie (`src/db.ts: initSchema()`). Testy jednostkowe też łączą
+się z tą bazą (patrz `tests/register.ts`) — pisz je tak, by dotykały tylko
+własnych, unikalnie oznaczonych wierszy i sprzątały po sobie; nigdy nie
+testuj operacji czyszczących całą tabelę (np. `clearResults()`) na współnej
+bazie.
+
 ## Zasady współpracy
 
 ### Commity — PYTAJ po każdej większej zmianie

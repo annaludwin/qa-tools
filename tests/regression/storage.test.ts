@@ -1,113 +1,83 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { readResults, getResult, setResult, clearResults, deleteResult } from "../../src/regression/storage.ts";
+import { getResult, setResult, deleteResult } from "../../src/regression/storage.ts";
+import { getPool } from "../../src/db.ts";
 
-function tempFile(): string {
-  return path.join(tmpdir(), `regression-results-${randomUUID()}.json`);
+// Unikalne id na test, żeby wpisy różnych testów (na współdzielonej bazie) się nie mylily.
+function fakeId(): string {
+  return `test-${randomUUID()}`;
 }
 
-test("readResults: nieistniejący plik → pusta mapa", async () => {
-  const file = tempFile();
-  assert.deepEqual(await readResults(file), {});
-});
+async function cleanup(...ids: string[]): Promise<void> {
+  await getPool().query("DELETE FROM regression_results WHERE test_case_id = ANY($1)", [ids]);
+}
 
 test("getResult: brak wpisu → undefined", async () => {
-  const file = tempFile();
-  assert.equal(await getResult(file, "tc-1"), undefined);
+  assert.equal(await getResult(fakeId()), undefined);
 });
 
 test("setResult: zapisuje status i datę", async () => {
-  const file = tempFile();
+  const id = fakeId();
   try {
-    const result = await setResult(file, "tc-1", "pass");
+    const result = await setResult(id, "pass");
     assert.equal(result.status, "pass");
     assert.ok(result.updatedAt, "wynik powinien mieć datę");
 
-    const found = await getResult(file, "tc-1");
+    const found = await getResult(id);
     assert.equal(found?.status, "pass");
   } finally {
-    await rm(file, { force: true });
+    await cleanup(id);
   }
 });
 
 test("setResult: nadpisuje poprzedni wynik tego samego test case'a", async () => {
-  const file = tempFile();
+  const id = fakeId();
   try {
-    await setResult(file, "tc-1", "fail");
-    await setResult(file, "tc-1", "pass");
+    await setResult(id, "fail");
+    await setResult(id, "pass");
 
-    const results = await readResults(file);
-    assert.equal(Object.keys(results).length, 1);
-    assert.equal(results["tc-1"].status, "pass");
+    const found = await getResult(id);
+    assert.equal(found?.status, "pass");
   } finally {
-    await rm(file, { force: true });
+    await cleanup(id);
   }
 });
 
 test("setResult: wyniki różnych test case'ów nie nadpisują się nawzajem", async () => {
-  const file = tempFile();
+  const id1 = fakeId();
+  const id2 = fakeId();
   try {
-    await setResult(file, "tc-1", "pass");
-    await setResult(file, "tc-2", "not supported");
+    await setResult(id1, "pass");
+    await setResult(id2, "not supported");
 
-    const results = await readResults(file);
-    assert.equal(results["tc-1"].status, "pass");
-    assert.equal(results["tc-2"].status, "not supported");
+    assert.equal((await getResult(id1))?.status, "pass");
+    assert.equal((await getResult(id2))?.status, "not supported");
   } finally {
-    await rm(file, { force: true });
-  }
-});
-
-test("clearResults: usuwa wszystkie zapisane wyniki", async () => {
-  const file = tempFile();
-  try {
-    await setResult(file, "tc-1", "pass");
-    await setResult(file, "tc-2", "fail");
-
-    await clearResults(file);
-
-    assert.deepEqual(await readResults(file), {});
-    assert.equal(await getResult(file, "tc-1"), undefined);
-  } finally {
-    await rm(file, { force: true });
-  }
-});
-
-test("clearResults: działa nawet jeśli plik jeszcze nie istniał", async () => {
-  const file = tempFile();
-  try {
-    await clearResults(file);
-    assert.deepEqual(await readResults(file), {});
-  } finally {
-    await rm(file, { force: true });
+    await cleanup(id1, id2);
   }
 });
 
 test("deleteResult: usuwa wynik jednego test case'a, nie ruszając innych", async () => {
-  const file = tempFile();
+  const id1 = fakeId();
+  const id2 = fakeId();
   try {
-    await setResult(file, "tc-1", "pass");
-    await setResult(file, "tc-2", "fail");
+    await setResult(id1, "pass");
+    await setResult(id2, "fail");
 
-    await deleteResult(file, "tc-1");
+    await deleteResult(id1);
 
-    assert.equal(await getResult(file, "tc-1"), undefined);
-    assert.equal((await getResult(file, "tc-2"))?.status, "fail");
+    assert.equal(await getResult(id1), undefined);
+    assert.equal((await getResult(id2))?.status, "fail");
   } finally {
-    await rm(file, { force: true });
+    await cleanup(id1, id2);
   }
 });
 
 test("deleteResult: działa nawet jeśli wpis nie istniał", async () => {
-  const file = tempFile();
-  try {
-    await deleteResult(file, "nie-istnieje");
-    assert.deepEqual(await readResults(file), {});
-  } finally {
-    await rm(file, { force: true });
-  }
+  await deleteResult(fakeId());
 });
+
+// clearResults() celowo NIE jest tu testowane: czyści całą tabelę
+// regression_results, a testy działają na tej samej bazie co produkcja
+// (patrz README) — test wywołujący ją skasowałby prawdziwe wyniki.

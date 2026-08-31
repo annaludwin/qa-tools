@@ -1,6 +1,15 @@
+// .env jest opcjonalny — lokalnie wczytuje DATABASE_URL z pliku,
+// na Render zmienne środowiskowe są ustawiane bezpośrednio w panelu.
+try {
+  process.loadEnvFile();
+} catch {
+  // brak .env — w porządku, jeśli DATABASE_URL jest już ustawione w środowisku
+}
+
 import express from "express";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { initSchema } from "./db.ts";
 
 // ── SEO Analyzer ──────────────────────────────────────────────
 import { buildReport } from "./seo/analyzer.ts";
@@ -29,11 +38,6 @@ app.use(express.json());
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
 app.use(express.static(publicDir));
-
-const SEO_HISTORY_FILE = path.join(__dirname, "..", "data", "seo", "history.json");
-const RESULTS_FILE = path.join(__dirname, "..", "data", "regression", "results.json");
-const REPORTS_FILE = path.join(__dirname, "..", "data", "regression", "reports.json");
-const TEST_CASES_FILE = path.join(__dirname, "..", "data", "regression", "testCases.json");
 
 // ════════════════════════════════════════════════════════════
 // SEO Analyzer — /api/seo/*
@@ -86,7 +90,7 @@ app.post("/api/seo/analyze", async (req, res) => {
     });
 
     try {
-      await addEntry(SEO_HISTORY_FILE, report);
+      await addEntry(report);
     } catch (err) {
       console.error("Failed to save the audit to history:", err);
     }
@@ -107,7 +111,7 @@ app.post("/api/seo/analyze", async (req, res) => {
 /** Lista historycznych audytów (skróty, najnowsze pierwsze). */
 app.get("/api/seo/history", async (_req, res) => {
   try {
-    const summaries = await listSeoHistory(SEO_HISTORY_FILE);
+    const summaries = await listSeoHistory();
     return res.json(summaries);
   } catch (err) {
     console.error("Error reading history:", err);
@@ -118,7 +122,7 @@ app.get("/api/seo/history", async (_req, res) => {
 /** Pełny raport z historii po id. */
 app.get("/api/seo/history/:id", async (req, res) => {
   try {
-    const entry = await getEntry(SEO_HISTORY_FILE, req.params.id);
+    const entry = await getEntry(req.params.id);
     if (!entry) {
       return res.status(404).json({ error: "No audit found with the given id." });
     }
@@ -170,10 +174,10 @@ function parseTestCaseInput(body: unknown): { data: TestCaseInput } | { error: s
 /** Lista test case'ów z ich aktualnym statusem (do lewej kolumny). */
 app.get("/api/regression/testcases", async (_req, res) => {
   try {
-    const testCases = await readAll(TEST_CASES_FILE);
+    const testCases = await readAll();
     const summaries: TestCaseSummary[] = await Promise.all(
       testCases.map(async (tc) => {
-        const result = await getResult(RESULTS_FILE, tc.id);
+        const result = await getResult(tc.id);
         return { id: tc.id, section: tc.section, title: tc.title, status: result?.status ?? "untested" };
       }),
     );
@@ -187,12 +191,12 @@ app.get("/api/regression/testcases", async (_req, res) => {
 /** Pełny test case ze statusem (do podglądu w prawej kolumnie). */
 app.get("/api/regression/testcases/:id", async (req, res) => {
   try {
-    const testCase = await getById(TEST_CASES_FILE, req.params.id);
+    const testCase = await getById(req.params.id);
     if (!testCase) {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
 
-    const result = await getResult(RESULTS_FILE, testCase.id);
+    const result = await getResult(testCase.id);
     const detail: TestCaseDetail = { ...testCase, status: result?.status ?? "untested" };
     return res.json(detail);
   } catch (err) {
@@ -209,7 +213,7 @@ app.post("/api/regression/testcases", async (req, res) => {
   }
 
   try {
-    const testCase = await create(TEST_CASES_FILE, parsed.data);
+    const testCase = await create(parsed.data);
     return res.status(201).json(testCase);
   } catch (err) {
     console.error("Error creating test case:", err);
@@ -225,7 +229,7 @@ app.put("/api/regression/testcases/:id", async (req, res) => {
   }
 
   try {
-    const testCase = await update(TEST_CASES_FILE, req.params.id, parsed.data);
+    const testCase = await update(req.params.id, parsed.data);
     if (!testCase) {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
@@ -239,11 +243,11 @@ app.put("/api/regression/testcases/:id", async (req, res) => {
 /** Usuwa test case razem z jego zapisanym wynikiem (jeśli istniał). */
 app.delete("/api/regression/testcases/:id", async (req, res) => {
   try {
-    const removed = await remove(TEST_CASES_FILE, req.params.id);
+    const removed = await remove(req.params.id);
     if (!removed) {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
-    await deleteResult(RESULTS_FILE, req.params.id);
+    await deleteResult(req.params.id);
     return res.status(204).end();
   } catch (err) {
     console.error("Error deleting test case:", err);
@@ -253,7 +257,7 @@ app.delete("/api/regression/testcases/:id", async (req, res) => {
 
 /** Zapisuje wynik wykonania testu. */
 app.post("/api/regression/testcases/:id/result", async (req, res) => {
-  const testCase = await getById(TEST_CASES_FILE, req.params.id);
+  const testCase = await getById(req.params.id);
   if (!testCase) {
     return res.status(404).json({ error: "No test case found with the given id." });
   }
@@ -264,7 +268,7 @@ app.post("/api/regression/testcases/:id/result", async (req, res) => {
   }
 
   try {
-    const result = await setResult(RESULTS_FILE, testCase.id, status as TestStatus);
+    const result = await setResult(testCase.id, status as TestStatus);
     return res.json(result);
   } catch (err) {
     console.error("Error saving test result:", err);
@@ -275,7 +279,7 @@ app.post("/api/regression/testcases/:id/result", async (req, res) => {
 /** Czyści wszystkie zapisane wyniki — test case'y wracają do statusu "untested". */
 app.post("/api/regression/results/clear", async (_req, res) => {
   try {
-    await clearResults(RESULTS_FILE);
+    await clearResults();
     return res.status(204).end();
   } catch (err) {
     console.error("Error clearing results:", err);
@@ -286,8 +290,8 @@ app.post("/api/regression/results/clear", async (_req, res) => {
 /** Generuje raport: snapshot aktualnych statusów wszystkich test case'ów, zapisuje go do historii. */
 app.post("/api/regression/reports", async (_req, res) => {
   try {
-    const testCases = await readAll(TEST_CASES_FILE);
-    const results = await readResults(RESULTS_FILE);
+    const testCases = await readAll();
+    const results = await readResults();
 
     const summary: StatusCounts = { untested: 0, pass: 0, fail: 0, "not supported": 0 };
     const entries: ReportResultEntry[] = testCases.map((tc) => {
@@ -296,7 +300,7 @@ app.post("/api/regression/reports", async (_req, res) => {
       return { id: tc.id, section: tc.section, title: tc.title, status };
     });
 
-    const report = await addReport(REPORTS_FILE, { summary, results: entries });
+    const report = await addReport({ summary, results: entries });
     return res.status(201).json(report);
   } catch (err) {
     console.error("Error generating report:", err);
@@ -307,7 +311,7 @@ app.post("/api/regression/reports", async (_req, res) => {
 /** Lista historycznych raportów (skróty, najnowsze pierwsze). */
 app.get("/api/regression/reports", async (_req, res) => {
   try {
-    const summaries = await listReports(REPORTS_FILE);
+    const summaries = await listReports();
     return res.json(summaries);
   } catch (err) {
     console.error("Error reading report history:", err);
@@ -318,7 +322,7 @@ app.get("/api/regression/reports", async (_req, res) => {
 /** Pełna treść raportu po id. */
 app.get("/api/regression/reports/:id", async (req, res) => {
   try {
-    const report = await getReport(REPORTS_FILE, req.params.id);
+    const report = await getReport(req.params.id);
     if (!report) {
       return res.status(404).json({ error: "No report found with the given id." });
     }
@@ -328,6 +332,8 @@ app.get("/api/regression/reports/:id", async (req, res) => {
     return res.status(500).json({ error: "Failed to read the report." });
   }
 });
+
+await initSchema();
 
 app.listen(PORT, () => {
   console.log(`\n✅ QA Tools is running!  Open in your browser:  http://localhost:${PORT}\n`);

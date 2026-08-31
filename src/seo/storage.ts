@@ -1,10 +1,9 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { getPool } from "../db.ts";
 import type { SeoReport } from "./types.ts";
 
 // Maksymalna liczba przechowywanych audytów. Starsze są usuwane,
-// żeby plik nie rósł w nieskończoność.
+// żeby tabela nie rosła w nieskończoność.
 const MAX_ENTRIES = 100;
 
 /** Pojedynczy wpis w historii: raport + metadane zapisu. */
@@ -24,6 +23,16 @@ export interface HistorySummary {
   statusCode: number;
 }
 
+interface HistoryRow {
+  id: string;
+  saved_at: Date;
+  report: SeoReport;
+}
+
+function rowToEntry(row: HistoryRow): HistoryEntry {
+  return { id: row.id, savedAt: row.saved_at.toISOString(), report: row.report };
+}
+
 /** Zamienia pełny wpis na skrót do listy. */
 export function toSummary(entry: HistoryEntry): HistorySummary {
   return {
@@ -35,55 +44,49 @@ export function toSummary(entry: HistoryEntry): HistorySummary {
   };
 }
 
-/**
- * Wczytuje całą historię z pliku.
- * Jeśli plik jeszcze nie istnieje — zwraca pustą listę.
- */
-export async function readHistory(file: string): Promise<HistoryEntry[]> {
-  try {
-    const content = await readFile(file, "utf8");
-    const data = JSON.parse(content);
-    return Array.isArray(data) ? (data as HistoryEntry[]) : [];
-  } catch (err) {
-    // Brak pliku (pierwsze uruchomienie) traktujemy jako pustą historię.
-    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
-      return [];
-    }
-    throw err;
-  }
+/** Wczytuje całą historię (najnowsze pierwsze). */
+export async function readHistory(): Promise<HistoryEntry[]> {
+  const pool = getPool();
+  const { rows } = await pool.query<HistoryRow>(
+    "SELECT id, saved_at, report FROM seo_history ORDER BY saved_at DESC",
+  );
+  return rows.map(rowToEntry);
 }
 
 /**
- * Dodaje raport do historii i zapisuje plik.
- * Nowe wpisy trafiają na początek; lista jest przycinana do MAX_ENTRIES.
+ * Dodaje raport do historii.
+ * Lista jest przycinana do MAX_ENTRIES (starsze wpisy usuwane).
  * Zwraca utworzony wpis (z nadanym id i datą).
  */
-export async function addEntry(file: string, report: SeoReport): Promise<HistoryEntry> {
-  const entry: HistoryEntry = {
-    id: randomUUID(),
-    savedAt: new Date().toISOString(),
-    report,
-  };
+export async function addEntry(report: SeoReport): Promise<HistoryEntry> {
+  const pool = getPool();
+  const entry: HistoryEntry = { id: randomUUID(), savedAt: new Date().toISOString(), report };
 
-  const history = await readHistory(file);
-  history.unshift(entry); // najnowszy na górze
-  const trimmed = history.slice(0, MAX_ENTRIES);
-
-  // Upewnij się, że katalog istnieje, zanim zapiszemy plik.
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify(trimmed, null, 2), "utf8");
+  await pool.query("INSERT INTO seo_history (id, saved_at, report) VALUES ($1, $2, $3)", [
+    entry.id,
+    entry.savedAt,
+    JSON.stringify(entry.report),
+  ]);
+  await pool.query(
+    "DELETE FROM seo_history WHERE id NOT IN (SELECT id FROM seo_history ORDER BY saved_at DESC LIMIT $1)",
+    [MAX_ENTRIES],
+  );
 
   return entry;
 }
 
 /** Zwraca pełny wpis po id lub undefined, jeśli nie znaleziono. */
-export async function getEntry(file: string, id: string): Promise<HistoryEntry | undefined> {
-  const history = await readHistory(file);
-  return history.find((e) => e.id === id);
+export async function getEntry(id: string): Promise<HistoryEntry | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query<HistoryRow>(
+    "SELECT id, saved_at, report FROM seo_history WHERE id = $1",
+    [id],
+  );
+  return rows[0] ? rowToEntry(rows[0]) : undefined;
 }
 
 /** Zwraca skróty wszystkich wpisów (najnowsze pierwsze). */
-export async function listSummaries(file: string): Promise<HistorySummary[]> {
-  const history = await readHistory(file);
+export async function listSummaries(): Promise<HistorySummary[]> {
+  const history = await readHistory();
   return history.map(toSummary);
 }

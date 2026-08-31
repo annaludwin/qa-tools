@@ -6,19 +6,26 @@
   "scripts": {
     "start": "node src/server.ts",
     "dev": "node --watch src/server.ts",
-    "test": "node --test \"tests/**/*.test.ts\"",
+    "test": "node --import ./tests/register.ts --test --test-concurrency=1 \"tests/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": ["qa", "testing", "seo", "regression"],
+  "keywords": [
+    "qa",
+    "testing",
+    "seo",
+    "regression"
+  ],
   "author": "Anna Ludwin",
   "license": "MIT",
   "dependencies": {
     "cheerio": "^1.0.0",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
     "typescript": "^5.7.0"
   }
 }

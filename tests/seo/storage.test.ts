@@ -1,23 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
-import {
-  readHistory,
-  addEntry,
-  getEntry,
-  listSummaries,
-  toSummary,
-} from "../../src/seo/storage.ts";
+import { addEntry, getEntry, listSummaries, toSummary } from "../../src/seo/storage.ts";
 import type { SeoReport } from "../../src/seo/types.ts";
+import { getPool } from "../../src/db.ts";
 import type { HistoryEntry } from "../../src/seo/storage.ts";
 
-// Tworzy przykładowy raport do testów.
-function fakeReport(url: string, score = 80): SeoReport {
+// Tworzy przykładowy raport do testów. URL jest unikalny na test, żeby wpisy
+// dodane przez różne testy (na współdzielonej bazie) się nie mylily.
+function fakeReport(score = 80): SeoReport {
   return {
-    url,
+    url: `https://${randomUUID()}.test`,
     statusCode: 200,
     responseTimeMs: 123,
     score,
@@ -26,89 +19,54 @@ function fakeReport(url: string, score = 80): SeoReport {
   };
 }
 
-// Zwraca ścieżkę do unikalnego pliku tymczasowego (inny dla każdego testu).
-function tempFile(): string {
-  return path.join(tmpdir(), `seo-history-${randomUUID()}.json`);
+async function cleanup(id: string): Promise<void> {
+  await getPool().query("DELETE FROM seo_history WHERE id = $1", [id]);
 }
 
-test("readHistory: nieistniejący plik → pusta lista", async () => {
-  const file = tempFile();
-  assert.deepEqual(await readHistory(file), []);
-});
-
 test("addEntry: zapisuje raport i nadaje id oraz datę", async () => {
-  const file = tempFile();
+  const report = fakeReport();
+  const entry = await addEntry(report);
   try {
-    const entry = await addEntry(file, fakeReport("https://a.pl"));
     assert.ok(entry.id, "wpis powinien mieć id");
     assert.ok(entry.savedAt, "wpis powinien mieć datę");
-    assert.equal(entry.report.url, "https://a.pl");
+    assert.equal(entry.report.url, report.url);
 
-    const history = await readHistory(file);
-    assert.equal(history.length, 1);
-    assert.equal(history[0].report.url, "https://a.pl");
+    const found = await getEntry(entry.id);
+    assert.equal(found?.report.url, report.url);
   } finally {
-    await rm(file, { force: true });
+    await cleanup(entry.id);
   }
 });
 
-test("addEntry: najnowszy wpis jest pierwszy", async () => {
-  const file = tempFile();
+test("getEntry: zwraca undefined dla nieznanego id", async () => {
+  assert.equal(await getEntry("nie-istnieje"), undefined);
+});
+
+test("listSummaries: zawiera dodany wpis (bez pełnego raportu)", async () => {
+  const entry = await addEntry(fakeReport(90));
   try {
-    await addEntry(file, fakeReport("https://pierwszy.pl"));
-    await addEntry(file, fakeReport("https://drugi.pl"));
-    const history = await readHistory(file);
-    assert.equal(history.length, 2);
-    assert.equal(history[0].report.url, "https://drugi.pl");
-    assert.equal(history[1].report.url, "https://pierwszy.pl");
+    const summaries = await listSummaries();
+    const found = summaries.find((s) => s.id === entry.id);
+    assert.ok(found, "dodany wpis powinien być na liście");
+    assert.deepEqual(Object.keys(found).sort(), ["id", "savedAt", "score", "statusCode", "url"]);
+    assert.equal(found.score, 90);
   } finally {
-    await rm(file, { force: true });
+    await cleanup(entry.id);
   }
 });
 
-test("getEntry: znajduje po id oraz zwraca undefined dla nieznanego id", async () => {
-  const file = tempFile();
+test("listSummaries: nowsze wpisy są przed starszymi", async () => {
+  const older = await addEntry(fakeReport());
+  await new Promise((resolve) => setTimeout(resolve, 10)); // upewnij się, że savedAt się różni
+  const newer = await addEntry(fakeReport());
   try {
-    const entry = await addEntry(file, fakeReport("https://a.pl"));
-    const found = await getEntry(file, entry.id);
-    assert.equal(found?.report.url, "https://a.pl");
-    assert.equal(await getEntry(file, "nie-istnieje"), undefined);
+    const summaries = await listSummaries();
+    const olderIndex = summaries.findIndex((s) => s.id === older.id);
+    const newerIndex = summaries.findIndex((s) => s.id === newer.id);
+    assert.ok(newerIndex < olderIndex, "nowszy wpis powinien być wcześniej na liście");
   } finally {
-    await rm(file, { force: true });
-  }
-});
-
-test("listSummaries: zwraca skróty (bez pełnego raportu)", async () => {
-  const file = tempFile();
-  try {
-    await addEntry(file, fakeReport("https://a.pl", 90));
-    const summaries = await listSummaries(file);
-    assert.equal(summaries.length, 1);
-    assert.deepEqual(Object.keys(summaries[0]).sort(), [
-      "id",
-      "savedAt",
-      "score",
-      "statusCode",
-      "url",
-    ]);
-    assert.equal(summaries[0].score, 90);
-  } finally {
-    await rm(file, { force: true });
-  }
-});
-
-test("addEntry: historia jest przycinana do 100 wpisów", async () => {
-  const file = tempFile();
-  try {
-    for (let i = 0; i < 105; i++) {
-      await addEntry(file, fakeReport(`https://strona-${i}.pl`));
-    }
-    const history = await readHistory(file);
-    assert.equal(history.length, 100);
-    // Najnowszy (105. dodany, indeks 104) powinien być na górze.
-    assert.equal(history[0].report.url, "https://strona-104.pl");
-  } finally {
-    await rm(file, { force: true });
+    await cleanup(older.id);
+    await cleanup(newer.id);
   }
 });
 
@@ -116,12 +74,12 @@ test("toSummary: mapuje pola z wpisu", () => {
   const entry: HistoryEntry = {
     id: "abc",
     savedAt: "2026-08-06T12:00:00.000Z",
-    report: fakeReport("https://a.pl", 75),
+    report: fakeReport(75),
   };
   assert.deepEqual(toSummary(entry), {
     id: "abc",
     savedAt: "2026-08-06T12:00:00.000Z",
-    url: "https://a.pl",
+    url: entry.report.url,
     score: 75,
     statusCode: 200,
   });

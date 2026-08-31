@@ -1,60 +1,61 @@
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import path from "node:path";
+import { getPool } from "../db.ts";
 import type { TestResult, TestStatus } from "./types.ts";
 
 /** Mapa: id test case'a → jego ostatni zapisany wynik. */
 type ResultsMap = Record<string, TestResult>;
 
-/**
- * Wczytuje wszystkie wyniki z pliku.
- * Jeśli plik jeszcze nie istnieje — zwraca pustą mapę.
- */
-export async function readResults(file: string): Promise<ResultsMap> {
-  try {
-    const content = await readFile(file, "utf8");
-    const data = JSON.parse(content);
-    return data && typeof data === "object" ? (data as ResultsMap) : {};
-  } catch (err) {
-    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
-      return {};
-    }
-    throw err;
+interface ResultRow {
+  test_case_id: string;
+  status: TestStatus;
+  updated_at: Date;
+}
+
+/** Wczytuje wszystkie wyniki. */
+export async function readResults(): Promise<ResultsMap> {
+  const pool = getPool();
+  const { rows } = await pool.query<ResultRow>(
+    "SELECT test_case_id, status, updated_at FROM regression_results",
+  );
+  const results: ResultsMap = {};
+  for (const row of rows) {
+    results[row.test_case_id] = { status: row.status, updatedAt: row.updated_at.toISOString() };
   }
+  return results;
 }
 
 /** Zwraca wynik pojedynczego test case'a lub undefined, jeśli jeszcze nie testowano. */
-export async function getResult(file: string, id: string): Promise<TestResult | undefined> {
-  const results = await readResults(file);
-  return results[id];
+export async function getResult(id: string): Promise<TestResult | undefined> {
+  const pool = getPool();
+  const { rows } = await pool.query<ResultRow>(
+    "SELECT test_case_id, status, updated_at FROM regression_results WHERE test_case_id = $1",
+    [id],
+  );
+  return rows[0] ? { status: rows[0].status, updatedAt: rows[0].updated_at.toISOString() } : undefined;
 }
 
 /** Zapisuje wynik test case'a (nadpisuje poprzedni) i zwraca zapisany wpis. */
-export async function setResult(file: string, id: string, status: TestStatus): Promise<TestResult> {
-  const result: TestResult = { status, updatedAt: new Date().toISOString() };
+export async function setResult(id: string, status: TestStatus): Promise<TestResult> {
+  const pool = getPool();
+  const updatedAt = new Date().toISOString();
 
-  const results = await readResults(file);
-  results[id] = result;
+  await pool.query(
+    `INSERT INTO regression_results (test_case_id, status, updated_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (test_case_id) DO UPDATE SET status = $2, updated_at = $3`,
+    [id, status, updatedAt],
+  );
 
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify(results, null, 2), "utf8");
-
-  return result;
+  return { status, updatedAt };
 }
 
 /** Usuwa wszystkie zapisane wyniki — test case'y wracają do statusu "untested". */
-export async function clearResults(file: string): Promise<void> {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify({}, null, 2), "utf8");
+export async function clearResults(): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM regression_results");
 }
 
 /** Usuwa zapisany wynik pojedynczego test case'a (np. gdy sam test case zostaje skasowany). */
-export async function deleteResult(file: string, id: string): Promise<void> {
-  const results = await readResults(file);
-  if (!(id in results)) {
-    return;
-  }
-  delete results[id];
-
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify(results, null, 2), "utf8");
+export async function deleteResult(id: string): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM regression_results WHERE test_case_id = $1", [id]);
 }
