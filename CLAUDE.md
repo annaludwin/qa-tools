@@ -13,6 +13,12 @@ Frontend: czysty HTML/CSS/JS w `public/`, bez frameworka/buildu.
 API obu narzędzi żyje pod wspólnym serwerem, rozdzielone prefiksami:
 `/api/seo/*` i `/api/regression/*`.
 
+Aplikacja Express jest zbudowana w `src/app.ts` (eksportuje `app`, bez
+`app.listen`) — `src/server.ts` to cienki wrapper do lokalnego/Render-owego
+uruchamiania, a `api/index.ts` to wejście dla Vercel (deploy jako Function).
+Zmiany w routingu/logice rób w `app.ts`, nie duplikuj w obu miejscach
+uruchamiania.
+
 ### Dane — Postgres (Supabase), nie pliki
 Wszystkie dane (historia SEO, test case'y, wyniki, raporty) trzymane są w
 jednej bazie Postgres (connection string w `DATABASE_URL`, plik `.env`,

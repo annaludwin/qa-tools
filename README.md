@@ -70,11 +70,29 @@ Typecheck:
 npm run typecheck
 ```
 
+## Deploying
+
+The app is a plain Express server, so it runs on any Node host as-is
+(`npm install && npm start`, with `DATABASE_URL` set). It's also set up to
+deploy to [Vercel](https://vercel.com) (free Hobby plan, no credit card) as
+a serverless function:
+
+1. Import the GitHub repo in Vercel ("Add New… → Project").
+2. Set the `DATABASE_URL` environment variable to your Supabase connection
+   string (same one as `.env` locally).
+3. Deploy — no other configuration needed.
+
+`api/index.ts` exports the same Express app used locally (see `src/app.ts`)
+as a Vercel Function, and `vercel.json` routes `/api/*` requests to it.
+Static files under `public/` are served directly by Vercel's CDN.
+
 ## Project structure
 
 | Path | What it is |
 |------|------------|
-| `src/server.ts` | Single Express app: serves the UI + both tools' `/api/*` routes |
+| `src/app.ts` | Builds the Express app: static files + both tools' `/api/*` routes |
+| `src/server.ts` | Local/traditional-host entry point (`app.listen`) |
+| `api/index.ts` | Vercel entry point (same app, no `app.listen`) |
 | `src/db.ts` | Shared Postgres connection pool + table creation (`initSchema`) |
 | `src/seo/` | SEO Analyzer logic (`analyzer.ts`, `url.ts`, `storage.ts`, `types.ts`) |
 | `src/regression/` | Regression suite logic (`testCaseStore.ts`, `storage.ts`, `reports.ts`, `seedTestCases.ts`, `types.ts`) |
