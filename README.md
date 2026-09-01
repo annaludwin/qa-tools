@@ -20,12 +20,19 @@ step). The frontend is plain HTML/CSS/JS, no framework or bundler.
 ## Setup
 
 1. Create a free Supabase project (or use any other Postgres database).
-2. Get its connection string. **Use the Session pooler or Transaction pooler
-   connection string, not "Direct connection"** — direct connections are
-   IPv6-only, which fails on many networks (Windows without IPv6, some
-   corporate networks). The pooler connection string looks like:
+2. Get its **Transaction pooler** connection string (Project Settings →
+   Database → Connection string), not "Direct connection" or "Session
+   pooler":
+   - Direct connections are IPv6-only, which fails on many networks (Windows
+     without IPv6, some corporate networks).
+   - Session pooler caps out at ~15 concurrent connections — fine for local
+     use, but a deployed serverless function (Vercel) can spin up several
+     concurrent instances and exhaust that fast. Transaction pooler is built
+     for exactly that (many brief, concurrent connections), so this project
+     uses it everywhere — locally and in production alike — to keep one
+     connection string for both.
    ```
-   postgresql://postgres.xxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:5432/postgres
+   postgresql://postgres.xxxxxxxxxxxx:[YOUR-PASSWORD]@aws-0-<region>.pooler.supabase.com:6543/postgres
    ```
 3. Copy `.env.example` to `.env` and set `DATABASE_URL` to that connection
    string (with your real password, url-encoded if it has special characters).
