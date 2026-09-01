@@ -1,5 +1,7 @@
 # QA Tools
 
+**Live: [qa-tools-opal.vercel.app](https://qa-tools-opal.vercel.app/)**
+
 A small hub of QA web tools, served from a single Express app:
 
 - **[SEO Analyzer](public/seo)** — paste a page URL and get a readable SEO
@@ -78,6 +80,9 @@ npm run typecheck
 ```
 
 ## Deploying
+
+This repo is deployed at [qa-tools-opal.vercel.app](https://qa-tools-opal.vercel.app/) —
+pushing to `master` auto-deploys via Vercel's GitHub integration.
 
 The app is a plain Express server, so it runs on any Node host as-is
 (`npm install && npm start`, with `DATABASE_URL` set). It's also set up to
