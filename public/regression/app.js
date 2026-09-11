@@ -12,6 +12,14 @@ const trashBackBtn = document.getElementById("trash-back-btn");
 const panelHeadingEl = document.querySelector(".panel-heading");
 const sidebarEl = document.querySelector(".sidebar");
 const toolbarEl = document.querySelector(".toolbar");
+const topMenuEl = document.querySelector(".top-menu");
+
+/** Mierzy realną wysokość .top-menu (zmienia się np. gdy toolbar/tab-nav zawijają się na węższym oknie)
+ * i wystawia ją jako zmienną CSS, żeby .sidebar/.preview mogły się do niej przykleić tuż pod spodem. */
+function updateTopMenuHeight() {
+  document.documentElement.style.setProperty("--top-menu-h", `${topMenuEl.getBoundingClientRect().height}px`);
+}
+new ResizeObserver(updateTopMenuHeight).observe(topMenuEl);
 
 let selectedId = null;
 let allTestCases = [];
