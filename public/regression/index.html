@@ -23,6 +23,7 @@
       <button id="generate-report-btn" class="toolbar-btn toolbar-btn-primary">Generate Report</button>
       <a id="report-history-link" href="report.html?suite=manual" target="_blank" rel="noopener" class="toolbar-btn toolbar-btn-secondary">View Report History</a>
       <button id="clear-results-btn" class="toolbar-btn toolbar-btn-danger">Clear Results</button>
+      <button id="trash-btn" class="toolbar-btn toolbar-btn-secondary">Trash</button>
     </div>
 
     <div class="layout">
@@ -35,6 +36,7 @@
           <button class="filter-chip active" data-status="not supported">Not Supported</button>
         </div>
         <ul id="testcase-list" class="testcase-list"></ul>
+        <div id="trash-panel" class="trash-panel" hidden></div>
       </aside>
 
       <main id="preview" class="preview">

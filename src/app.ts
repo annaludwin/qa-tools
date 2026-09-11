@@ -17,7 +17,18 @@ import { normalizeUrl } from "./seo/url.ts";
 import { addEntry, getEntry, listSummaries as listSeoHistory } from "./seo/storage.ts";
 
 // ── Regression Test Suite ────────────────────────────────────
-import { readAll, getById, create, update, remove, setAutomated } from "./regression/testCaseStore.ts";
+import {
+  readAll,
+  getById,
+  create,
+  update,
+  removeFromTrash,
+  trash,
+  readTrash,
+  restore,
+  purgeExpired,
+  setAutomated,
+} from "./regression/testCaseStore.ts";
 import type { TestCaseInput } from "./regression/testCaseStore.ts";
 import { manualResults, e2eResults } from "./regression/storage.ts";
 import { addReport, getReport, listSummaries as listReports } from "./regression/reports.ts";
@@ -211,6 +222,16 @@ app.get("/api/regression/testcases", async (req, res) => {
 });
 
 /** Pełny test case ze statusem (do podglądu w prawej kolumnie). */
+/** Lista test case'ów z tymczasowego kosza. */
+app.get("/api/regression/trash", async (_req, res) => {
+  try {
+    return res.json(await readTrash());
+  } catch (err) {
+    console.error("Error reading regression trash:", err);
+    return res.status(500).json({ error: "Failed to read the trash." });
+  }
+});
+
 app.get("/api/regression/testcases/:id", async (req, res) => {
   try {
     const testCase = await getById(req.params.id);
@@ -262,18 +283,46 @@ app.put("/api/regression/testcases/:id", async (req, res) => {
   }
 });
 
-/** Usuwa test case razem z jego zapisanymi wynikami (manual i e2e, jeśli istniały). */
+/** Przenosi test case do tymczasowego kosza. */
 app.delete("/api/regression/testcases/:id", async (req, res) => {
   try {
-    const removed = await remove(req.params.id);
-    if (!removed) {
+    const movedToTrash = await trash(req.params.id);
+    if (!movedToTrash) {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
-    await Promise.all([manualResults.deleteResult(req.params.id), e2eResults.deleteResult(req.params.id)]);
     return res.status(204).end();
   } catch (err) {
     console.error("Error deleting test case:", err);
     return res.status(500).json({ error: "Failed to delete the test case." });
+  }
+});
+
+/** Przywraca test case z kosza. */
+app.post("/api/regression/trash/:id/restore", async (req, res) => {
+  try {
+    const restored = await restore(req.params.id);
+    if (!restored) {
+      return res.status(404).json({ error: "No deleted test case found with the given id." });
+    }
+    return res.status(204).end();
+  } catch (err) {
+    console.error("Error restoring test case:", err);
+    return res.status(500).json({ error: "Failed to restore the test case." });
+  }
+});
+
+/** Trwale usuwa test case z kosza razem z zapisanymi wynikami. */
+app.delete("/api/regression/trash/:id", async (req, res) => {
+  try {
+    const deleted = await removeFromTrash(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: "No deleted test case found with the given id." });
+    }
+    await Promise.all([manualResults.deleteResult(req.params.id), e2eResults.deleteResult(req.params.id)]);
+    return res.status(204).end();
+  } catch (err) {
+    console.error("Error permanently deleting test case:", err);
+    return res.status(500).json({ error: "Failed to permanently delete the test case." });
   }
 });
 
@@ -387,5 +436,9 @@ app.get("/api/regression/reports/:id", async (req, res) => {
 });
 
 await initSchema();
+const purgedCount = await purgeExpired();
+if (purgedCount > 0) {
+  console.log(`Purged ${purgedCount} expired regression test case(s) from trash.`);
+}
 
 export default app;

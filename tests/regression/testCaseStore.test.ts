@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readAll, getById, create, update, remove, setAutomated } from "../../src/regression/testCaseStore.ts";
+import { readAll, getById, create, update, remove, trash, readTrash, restore, setAutomated } from "../../src/regression/testCaseStore.ts";
 import type { TestCaseInput } from "../../src/regression/testCaseStore.ts";
 
 function fakeInput(overrides: Partial<TestCaseInput> = {}): TestCaseInput {
@@ -98,4 +98,19 @@ test("remove: usuwa test case i zwraca true", async () => {
 
 test("remove: zwraca false dla nieznanego id", async () => {
   assert.equal(await remove("nie-istnieje"), false);
+});
+
+test("trash i restore: przenoszą test case do kosza i przywracają go", async () => {
+  const created = await create(fakeInput({ title: "Temporary trash test case" }));
+  try {
+    assert.equal(await trash(created.id), true);
+    assert.equal(await getById(created.id), undefined);
+    assert.ok((await readTrash()).some((tc) => tc.id === created.id));
+
+    assert.equal(await restore(created.id), true);
+    assert.equal((await getById(created.id))?.id, created.id);
+    assert.ok(!(await readTrash()).some((tc) => tc.id === created.id));
+  } finally {
+    await remove(created.id);
+  }
 });

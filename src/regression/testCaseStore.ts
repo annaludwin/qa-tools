@@ -16,6 +16,11 @@ interface TestCaseRow {
   steps: string[];
   expected_result: string[];
   automated: boolean;
+  deleted_at: Date | null;
+}
+
+export interface DeletedTestCase extends TestCase {
+  deletedAt: string;
 }
 
 function rowToTestCase(row: TestCaseRow): TestCase {
@@ -65,14 +70,16 @@ export async function readAll(suite: TestSuite): Promise<TestCase[]> {
     await seed();
     return suite === "manual" ? seedTestCases.map((tc) => ({ ...tc, automated: false })) : [];
   }
-  return rows.map(rowToTestCase).filter((tc) => tc.automated === (suite === "e2e"));
+  return rows
+    .filter((row) => row.deleted_at === null && row.automated === (suite === "e2e"))
+    .map(rowToTestCase);
 }
 
 /** Zwraca test case po id lub undefined, jeśli nie znaleziono. */
 export async function getById(id: string): Promise<TestCase | undefined> {
   const pool = getPool();
   const { rows } = await pool.query<TestCaseRow>(
-    "SELECT * FROM regression_test_cases WHERE id = $1",
+    "SELECT * FROM regression_test_cases WHERE id = $1 AND deleted_at IS NULL",
     [id],
   );
   return rows[0] ? rowToTestCase(rows[0]) : undefined;
@@ -138,4 +145,71 @@ export async function remove(id: string): Promise<boolean> {
   const pool = getPool();
   const { rowCount } = await pool.query("DELETE FROM regression_test_cases WHERE id = $1", [id]);
   return (rowCount ?? 0) > 0;
+}
+
+/** Trwale usuwa test case wyłącznie wtedy, gdy znajduje się już w koszu. */
+export async function removeFromTrash(id: string): Promise<boolean> {
+  const pool = getPool();
+  const { rowCount } = await pool.query(
+    "DELETE FROM regression_test_cases WHERE id = $1 AND deleted_at IS NOT NULL",
+    [id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Przenosi test case do tymczasowego kosza, zachowując jego wyniki. */
+export async function trash(id: string): Promise<boolean> {
+  const pool = getPool();
+  const { rowCount } = await pool.query(
+    "UPDATE regression_test_cases SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+    [id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Zwraca test case'y z kosza, najnowsze usunięte jako pierwsze. */
+export async function readTrash(): Promise<DeletedTestCase[]> {
+  const pool = getPool();
+  const { rows } = await pool.query<TestCaseRow>(
+    "SELECT * FROM regression_test_cases WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+  );
+  return rows.map((row) => ({ ...rowToTestCase(row), deletedAt: row.deleted_at!.toISOString() }));
+}
+
+/** Przywraca test case z kosza. */
+export async function restore(id: string): Promise<boolean> {
+  const pool = getPool();
+  const { rowCount } = await pool.query(
+    "UPDATE regression_test_cases SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL",
+    [id],
+  );
+  return (rowCount ?? 0) > 0;
+}
+
+/** Trwale usuwa test case'y przebywające w koszu dłużej niż 30 dni. */
+export async function purgeExpired(): Promise<number> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ id: string }>(
+      "SELECT id FROM regression_test_cases WHERE deleted_at < NOW() - INTERVAL '30 days'",
+    );
+    if (rows.length === 0) {
+      await client.query("COMMIT");
+      return 0;
+    }
+
+    const ids = rows.map((row) => row.id);
+    await client.query("DELETE FROM regression_results WHERE test_case_id = ANY($1)", [ids]);
+    await client.query("DELETE FROM regression_results_e2e WHERE test_case_id = ANY($1)", [ids]);
+    await client.query("DELETE FROM regression_test_cases WHERE id = ANY($1)", [ids]);
+    await client.query("COMMIT");
+    return ids.length;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

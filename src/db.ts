@@ -35,6 +35,7 @@ export async function initSchema(): Promise<void> {
       preconditions text NOT NULL,
       steps jsonb NOT NULL,
       expected_result jsonb NOT NULL
+      ,deleted_at timestamptz
     );
 
     CREATE TABLE IF NOT EXISTS regression_results (
@@ -57,6 +58,7 @@ export async function initSchema(): Promise<void> {
     );
 
     ALTER TABLE regression_test_cases ADD COLUMN IF NOT EXISTS automated boolean NOT NULL DEFAULT false;
+    ALTER TABLE regression_test_cases ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
     ALTER TABLE regression_reports ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'manual';
   `);
 }

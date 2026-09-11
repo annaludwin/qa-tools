@@ -7,6 +7,8 @@ const filterBarEl = document.getElementById("status-filter");
 const sectionOptionsEl = document.getElementById("section-options");
 const suiteTabsEl = document.getElementById("suite-tabs");
 const reportHistoryLink = document.getElementById("report-history-link");
+const trashBtn = document.getElementById("trash-btn");
+const trashPanel = document.getElementById("trash-panel");
 
 let selectedId = null;
 let allTestCases = [];
@@ -14,6 +16,7 @@ const activeStatuses = new Set(["untested", "pass", "fail", "not supported"]);
 
 const SUITE_LABELS = { manual: "Manual", e2e: "E2E" };
 let currentSuite = new URLSearchParams(window.location.search).get("suite") === "e2e" ? "e2e" : "manual";
+let trashOpen = false;
 
 const STATUS_LABELS = {
   untested: "Untested",
@@ -40,10 +43,19 @@ function switchSuite(suite) {
     return;
   }
   currentSuite = suite;
+  trashOpen = false;
+  applyTrashUI();
   selectedId = null;
   applySuiteUI();
   previewEl.innerHTML = `<p class="empty-state">Select a test case on the left to see its details.</p>`;
   loadTestCaseList();
+}
+
+function applyTrashUI() {
+  listEl.hidden = trashOpen;
+  filterBarEl.hidden = trashOpen;
+  trashPanel.hidden = !trashOpen;
+  trashBtn.textContent = trashOpen ? "Back to Test Cases" : "Trash";
 }
 
 async function loadTestCaseList() {
@@ -70,34 +82,40 @@ function renderList(testCases) {
     return;
   }
 
-  let lastSection = null;
+  const groupedTestCases = new Map();
   for (const tc of testCases) {
-    if (tc.section !== lastSection) {
-      const heading = document.createElement("li");
-      heading.className = "section-header";
-      heading.textContent = tc.section;
-      listEl.appendChild(heading);
-      lastSection = tc.section;
+    if (!groupedTestCases.has(tc.section)) {
+      groupedTestCases.set(tc.section, []);
     }
+    groupedTestCases.get(tc.section).push(tc);
+  }
 
-    const li = document.createElement("li");
-    const btn = document.createElement("button");
-    btn.className = "testcase-btn" + (tc.id === selectedId ? " active" : "");
-    btn.dataset.id = tc.id;
+  for (const [section, sectionTestCases] of groupedTestCases) {
+    const heading = document.createElement("li");
+    heading.className = "section-header";
+    heading.textContent = section;
+    listEl.appendChild(heading);
 
-    const title = document.createElement("span");
-    title.className = "testcase-title";
-    title.textContent = tc.title;
+    for (const tc of sectionTestCases) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.className = "testcase-btn" + (tc.id === selectedId ? " active" : "");
+      btn.dataset.id = tc.id;
 
-    const badge = document.createElement("span");
-    badge.className = "status-badge";
-    badge.dataset.status = tc.status;
-    badge.textContent = STATUS_LABELS[tc.status];
+      const title = document.createElement("span");
+      title.className = "testcase-title";
+      title.textContent = tc.title;
 
-    btn.append(title, badge);
-    btn.addEventListener("click", () => selectTestCase(tc.id));
-    li.appendChild(btn);
-    listEl.appendChild(li);
+      const badge = document.createElement("span");
+      badge.className = "status-badge";
+      badge.dataset.status = tc.status;
+      badge.textContent = STATUS_LABELS[tc.status];
+
+      btn.append(title, badge);
+      btn.addEventListener("click", () => selectTestCase(tc.id));
+      li.appendChild(btn);
+      listEl.appendChild(li);
+    }
   }
 }
 
@@ -366,7 +384,7 @@ async function submitTestCaseForm(form, existingId) {
 }
 
 async function deleteTestCase(id) {
-  const confirmed = window.confirm("Delete this test case? This cannot be undone.");
+  const confirmed = window.confirm("Move this test case to Trash? It can be restored for 30 days.");
   if (!confirmed) {
     return;
   }
@@ -379,6 +397,67 @@ async function deleteTestCase(id) {
   selectedId = null;
   previewEl.innerHTML = `<p class="empty-state">Select a test case on the left to see its details.</p>`;
   await loadTestCaseList();
+}
+
+async function loadTrash() {
+  const res = await fetch("/api/regression/trash");
+  if (!res.ok) {
+    trashPanel.innerHTML = `<p class="empty-state">Failed to load the trash.</p>`;
+    return;
+  }
+
+  const testCases = await res.json();
+  if (testCases.length === 0) {
+    trashPanel.innerHTML = `<p class="empty-state">Trash is empty.</p>`;
+    return;
+  }
+
+  trashPanel.innerHTML = `<p class="trash-note">Items are permanently deleted after 30 days.</p>`;
+  const list = document.createElement("ul");
+  list.className = "trash-list";
+  for (const testCase of testCases) {
+    const item = document.createElement("li");
+    item.className = "trash-item";
+    item.innerHTML = `
+      <strong>${escapeHtml(testCase.title)}</strong>
+      <small>Deleted ${new Date(testCase.deletedAt).toLocaleDateString()}</small>
+      <div class="trash-item-actions">
+        <button class="toolbar-btn toolbar-btn-secondary restore-btn">Restore</button>
+        <button class="toolbar-btn toolbar-btn-danger permanent-delete-btn">Delete permanently</button>
+      </div>
+    `;
+    item.querySelector(".restore-btn").addEventListener("click", () => restoreTestCase(testCase.id));
+    item.querySelector(".permanent-delete-btn").addEventListener("click", () => permanentlyDeleteTestCase(testCase.id));
+    list.appendChild(item);
+  }
+  trashPanel.appendChild(list);
+}
+
+async function restoreTestCase(id) {
+  const res = await fetch(`/api/regression/trash/${id}/restore`, { method: "POST" });
+  if (res.ok) {
+    await loadTrash();
+    await loadTestCaseList();
+  }
+}
+
+async function permanentlyDeleteTestCase(id) {
+  const confirmed = window.confirm("Permanently delete this test case? This cannot be undone.");
+  if (!confirmed) {
+    return;
+  }
+  const res = await fetch(`/api/regression/trash/${id}`, { method: "DELETE" });
+  if (res.ok) {
+    await loadTrash();
+  }
+}
+
+async function toggleTrash() {
+  trashOpen = !trashOpen;
+  applyTrashUI();
+  if (trashOpen) {
+    await loadTrash();
+  }
 }
 
 async function toggleAutomated(testCase) {
@@ -456,6 +535,7 @@ function toggleStatusFilter(chip) {
 
 generateReportBtn.addEventListener("click", generateReport);
 clearResultsBtn.addEventListener("click", clearResults);
+trashBtn.addEventListener("click", toggleTrash);
 addTestCaseBtn.addEventListener("click", () => renderTestCaseForm(null));
 for (const chip of filterBarEl.querySelectorAll(".filter-chip")) {
   chip.addEventListener("click", () => toggleStatusFilter(chip));
@@ -465,4 +545,5 @@ for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
 }
 
 applySuiteUI();
+applyTrashUI();
 loadTestCaseList();
