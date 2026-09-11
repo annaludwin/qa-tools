@@ -141,6 +141,11 @@ h1 {
   padding: 1.1rem 1.1rem 1.25rem;
 }
 
+/* Widok Trash chowa podgląd testu, więc lista testów przejmuje całą szerokość. */
+.sidebar.sidebar-full {
+  flex: 1 1 auto;
+}
+
 /* Podgląd (kolumna krótsza niż lista) zostaje przyklejony przy przewijaniu,
    z własnym przewijaniem, żeby przyciski wyniku nie wypadły poza ekran. */
 .preview {

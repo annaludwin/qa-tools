@@ -9,6 +9,7 @@ const suiteTabsEl = document.getElementById("suite-tabs");
 const reportHistoryLink = document.getElementById("report-history-link");
 const trashBtn = document.getElementById("trash-btn");
 const panelHeadingEl = document.querySelector(".panel-heading");
+const sidebarEl = document.querySelector(".sidebar");
 
 let selectedId = null;
 let allTestCases = [];
@@ -54,6 +55,8 @@ function switchSuite(suite) {
 function applyTrashUI() {
   listEl.hidden = false;
   filterBarEl.hidden = trashOpen;
+  previewEl.hidden = trashOpen;
+  sidebarEl.classList.toggle("sidebar-full", trashOpen);
   panelHeadingEl.textContent = trashOpen ? "Trash" : "Test cases";
   trashBtn.textContent = trashOpen ? "Back to Test Cases" : "Trash";
 }
