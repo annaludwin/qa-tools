@@ -11,6 +11,7 @@ const trashBtn = document.getElementById("trash-btn");
 const trashBackBtn = document.getElementById("trash-back-btn");
 const panelHeadingEl = document.querySelector(".panel-heading");
 const sidebarEl = document.querySelector(".sidebar");
+const toolbarEl = document.querySelector(".toolbar");
 
 let selectedId = null;
 let allTestCases = [];
@@ -61,6 +62,7 @@ function applyTrashUI() {
   listEl.hidden = false;
   filterBarEl.hidden = trashOpen;
   previewEl.hidden = trashOpen;
+  toolbarEl.hidden = trashOpen;
   sidebarEl.classList.toggle("sidebar-full", trashOpen);
   panelHeadingEl.textContent = trashOpen ? "Trash" : "Test cases";
   trashBtn.textContent = "Trash";

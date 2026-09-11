@@ -93,6 +93,12 @@ h1 {
   padding: 0 1.25rem 1.5rem;
 }
 
+/* Ten sam powód co przy .filter-bar/.multiselect-menu/.panel-action-btn:
+   własne display tej klasy bije domyślny styl przeglądarki dla [hidden]. */
+.toolbar[hidden] {
+  display: none;
+}
+
 .toolbar-btn {
   padding: 0.7rem 1.4rem;
   font-size: 0.92rem;
