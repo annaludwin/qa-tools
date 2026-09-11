@@ -10,7 +10,6 @@ const reportHistoryLink = document.getElementById("report-history-link");
 const trashBtn = document.getElementById("trash-btn");
 const trashBackBtn = document.getElementById("trash-back-btn");
 const panelHeadingEl = document.querySelector(".panel-heading");
-const sidebarEl = document.querySelector(".sidebar");
 const toolbarEl = document.querySelector(".toolbar");
 const topMenuEl = document.querySelector(".top-menu");
 
@@ -71,7 +70,7 @@ function applyTrashUI() {
   filterBarEl.hidden = trashOpen;
   previewEl.hidden = trashOpen;
   toolbarEl.hidden = trashOpen;
-  sidebarEl.classList.toggle("sidebar-full", trashOpen);
+  suiteTabsEl.hidden = trashOpen;
   panelHeadingEl.textContent = trashOpen ? "Trash" : "Test cases";
   trashBtn.textContent = "Trash";
   trashBackBtn.hidden = !trashOpen;
