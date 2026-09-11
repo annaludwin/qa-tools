@@ -129,9 +129,11 @@ function renderPreview(testCase) {
     <h2></h2>
     <div class="preview-header-actions">
       <span class="status-badge" data-status="${testCase.status}">${STATUS_LABELS[testCase.status]}</span>
-      <button class="icon-btn" id="automate-testcase-btn" title="${automateLabel}" aria-label="${automateLabel}">🎭</button>
-      <button class="icon-btn" id="edit-testcase-btn" title="Edit" aria-label="Edit">✎</button>
-      <button class="icon-btn icon-btn-danger" id="delete-testcase-btn" title="Delete" aria-label="Delete">🗑</button>
+      <div class="preview-header-icon-actions">
+        <button class="icon-btn" id="automate-testcase-btn" title="${automateLabel}" aria-label="${automateLabel}">🎭</button>
+        <button class="icon-btn" id="edit-testcase-btn" title="Edit" aria-label="Edit">✎</button>
+        <button class="icon-btn icon-btn-danger" id="delete-testcase-btn" title="Delete" aria-label="Delete">🗑</button>
+      </div>
     </div>
   `;
   header.querySelector("h2").textContent = testCase.title;
