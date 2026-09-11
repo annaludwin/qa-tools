@@ -8,6 +8,7 @@ const sectionOptionsEl = document.getElementById("section-options");
 const suiteTabsEl = document.getElementById("suite-tabs");
 const reportHistoryLink = document.getElementById("report-history-link");
 const trashBtn = document.getElementById("trash-btn");
+const trashBackBtn = document.getElementById("trash-back-btn");
 const panelHeadingEl = document.querySelector(".panel-heading");
 const sidebarEl = document.querySelector(".sidebar");
 
@@ -28,13 +29,17 @@ const STATUS_LABELS = {
 
 const PLATFORM_OPTIONS = ["Desktop", "Mobile", "Tablet"];
 
+/** "+ Add Test Case" ma sens tylko przy przeglądaniu Manual poza koszem — nowy test case zawsze startuje jako manualny. */
+function updateAddTestCaseVisibility() {
+  addTestCaseBtn.hidden = currentSuite === "e2e" || trashOpen;
+}
+
 /** Odświeża widoczność elementów zależnych od aktywnej zakładki (Manual/E2E). */
 function applySuiteUI() {
   for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
     btn.classList.toggle("active", btn.dataset.suite === currentSuite);
   }
-  // Nowy test case zawsze startuje jako manualny — automatyzacja to osobna akcja.
-  addTestCaseBtn.hidden = currentSuite === "e2e";
+  updateAddTestCaseVisibility();
   reportHistoryLink.href = `report.html?suite=${currentSuite}`;
   history.replaceState(null, "", `index.html?suite=${currentSuite}`);
 }
@@ -58,7 +63,9 @@ function applyTrashUI() {
   previewEl.hidden = trashOpen;
   sidebarEl.classList.toggle("sidebar-full", trashOpen);
   panelHeadingEl.textContent = trashOpen ? "Trash" : "Test cases";
-  trashBtn.textContent = trashOpen ? "Back to Test Cases" : "Trash";
+  trashBtn.textContent = "Trash";
+  trashBackBtn.hidden = !trashOpen;
+  updateAddTestCaseVisibility();
 }
 
 async function loadTestCaseList() {
@@ -346,12 +353,25 @@ function splitLines(value) {
 }
 
 async function submitTestCaseForm(form, existingId) {
+  if (form.dataset.submitting === "true") {
+    return;
+  }
+
+  form.dataset.submitting = "true";
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalSubmitLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Saving...";
+
   const errorEl = form.querySelector("#form-error");
   const platforms = [...form.querySelectorAll("#tc-platforms-menu input:checked")].map((cb) => cb.value);
 
   if (platforms.length === 0) {
     errorEl.textContent = "At least one platform is required.";
     errorEl.hidden = false;
+    delete form.dataset.submitting;
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalSubmitLabel;
     return;
   }
 
@@ -368,22 +388,30 @@ async function submitTestCaseForm(form, existingId) {
   const url = existingId ? `/api/regression/testcases/${existingId}` : "/api/regression/testcases";
   const method = existingId ? "PUT" : "POST";
 
-  const res = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    errorEl.textContent = body.error || "Failed to save the test case.";
-    errorEl.hidden = false;
-    return;
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      errorEl.textContent = body.error || "Failed to save the test case.";
+      errorEl.hidden = false;
+      return;
+    }
+
+    const testCase = await res.json();
+    await loadTestCaseList();
+    await selectTestCase(testCase.id);
+  } finally {
+    delete form.dataset.submitting;
+    if (form.isConnected) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalSubmitLabel;
+    }
   }
-
-  const testCase = await res.json();
-  await loadTestCaseList();
-  await selectTestCase(testCase.id);
 }
 
 async function deleteTestCase(id) {
@@ -553,6 +581,7 @@ function toggleStatusFilter(chip) {
 generateReportBtn.addEventListener("click", generateReport);
 clearResultsBtn.addEventListener("click", clearResults);
 trashBtn.addEventListener("click", toggleTrash);
+trashBackBtn.addEventListener("click", toggleTrash);
 addTestCaseBtn.addEventListener("click", () => renderTestCaseForm(null));
 for (const chip of filterBarEl.querySelectorAll(".filter-chip")) {
   chip.addEventListener("click", () => toggleStatusFilter(chip));

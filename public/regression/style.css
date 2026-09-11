@@ -24,6 +24,14 @@ body {
   line-height: 1.5;
 }
 
+.top-menu {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  border-bottom: 1px solid var(--card-2);
+}
+
 header {
   text-align: center;
   padding: 2rem 1.25rem 1.5rem;
@@ -163,6 +171,62 @@ h1 {
 .panel-heading {
   font-size: 1.1rem;
   margin: 0 0 0.75rem;
+}
+
+.panel-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.panel-heading-row .panel-heading {
+  margin-bottom: 0.75rem;
+}
+
+.panel-action-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--card-2);
+  border-radius: var(--radius);
+  background: var(--card-2);
+  color: var(--text);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Ten sam powód co przy .filter-bar/.multiselect-menu: własne display
+   tej klasy bije domyślny styl przeglądarki dla [hidden]. */
+.panel-action-btn[hidden] {
+  display: none;
+}
+
+.panel-action-btn:hover {
+  border-color: var(--accent);
+}
+
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+.link-btn[hidden] {
+  display: none;
 }
 
 .empty-state {
