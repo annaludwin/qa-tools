@@ -8,7 +8,7 @@ const sectionOptionsEl = document.getElementById("section-options");
 const suiteTabsEl = document.getElementById("suite-tabs");
 const reportHistoryLink = document.getElementById("report-history-link");
 const trashBtn = document.getElementById("trash-btn");
-const trashPanel = document.getElementById("trash-panel");
+const panelHeadingEl = document.querySelector(".panel-heading");
 
 let selectedId = null;
 let allTestCases = [];
@@ -52,9 +52,9 @@ function switchSuite(suite) {
 }
 
 function applyTrashUI() {
-  listEl.hidden = trashOpen;
+  listEl.hidden = false;
   filterBarEl.hidden = trashOpen;
-  trashPanel.hidden = !trashOpen;
+  panelHeadingEl.textContent = trashOpen ? "Trash" : "Test cases";
   trashBtn.textContent = trashOpen ? "Back to Test Cases" : "Trash";
 }
 
@@ -402,35 +402,47 @@ async function deleteTestCase(id) {
 async function loadTrash() {
   const res = await fetch("/api/regression/trash");
   if (!res.ok) {
-    trashPanel.innerHTML = `<p class="empty-state">Failed to load the trash.</p>`;
+    listEl.innerHTML = `<li class="empty-state">Failed to load the trash.</li>`;
     return;
   }
 
   const testCases = await res.json();
   if (testCases.length === 0) {
-    trashPanel.innerHTML = `<p class="empty-state">Trash is empty.</p>`;
+    listEl.innerHTML = `<li class="empty-state">Trash is empty.</li>`;
     return;
   }
 
-  trashPanel.innerHTML = `<p class="trash-note">Items are permanently deleted after 30 days.</p>`;
-  const list = document.createElement("ul");
-  list.className = "trash-list";
+  listEl.innerHTML = `<li class="trash-note">Items are permanently deleted after 30 days.</li>`;
+  const groupedTestCases = new Map();
   for (const testCase of testCases) {
-    const item = document.createElement("li");
-    item.className = "trash-item";
-    item.innerHTML = `
-      <strong>${escapeHtml(testCase.title)}</strong>
-      <small>Deleted ${new Date(testCase.deletedAt).toLocaleDateString()}</small>
-      <div class="trash-item-actions">
-        <button class="toolbar-btn toolbar-btn-secondary restore-btn">Restore</button>
-        <button class="toolbar-btn toolbar-btn-danger permanent-delete-btn">Delete permanently</button>
-      </div>
-    `;
-    item.querySelector(".restore-btn").addEventListener("click", () => restoreTestCase(testCase.id));
-    item.querySelector(".permanent-delete-btn").addEventListener("click", () => permanentlyDeleteTestCase(testCase.id));
-    list.appendChild(item);
+    if (!groupedTestCases.has(testCase.section)) {
+      groupedTestCases.set(testCase.section, []);
+    }
+    groupedTestCases.get(testCase.section).push(testCase);
   }
-  trashPanel.appendChild(list);
+
+  for (const [section, sectionTestCases] of groupedTestCases) {
+    const heading = document.createElement("li");
+    heading.className = "section-header";
+    heading.textContent = section;
+    listEl.appendChild(heading);
+
+    for (const testCase of sectionTestCases) {
+      const item = document.createElement("li");
+      item.className = "trash-item";
+      item.innerHTML = `
+        <strong>${escapeHtml(testCase.title)}</strong>
+        <small>Deleted ${new Date(testCase.deletedAt).toLocaleDateString()}</small>
+        <div class="trash-item-actions">
+          <button class="toolbar-btn toolbar-btn-secondary restore-btn">Restore</button>
+          <button class="toolbar-btn toolbar-btn-danger permanent-delete-btn">Delete permanently</button>
+        </div>
+      `;
+      item.querySelector(".restore-btn").addEventListener("click", () => restoreTestCase(testCase.id));
+      item.querySelector(".permanent-delete-btn").addEventListener("click", () => permanentlyDeleteTestCase(testCase.id));
+      listEl.appendChild(item);
+    }
+  }
 }
 
 async function restoreTestCase(id) {
@@ -457,6 +469,8 @@ async function toggleTrash() {
   applyTrashUI();
   if (trashOpen) {
     await loadTrash();
+  } else {
+    await loadTestCaseList();
   }
 }
 

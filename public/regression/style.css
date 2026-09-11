@@ -220,6 +220,13 @@ h1 {
   margin-bottom: 0.9rem;
 }
 
+/* Jak przy .multiselect-menu: reguła autora dla .filter-bar wygrywa z
+   domyślnym stylem przeglądarki dla [hidden] — bez tego JS ustawiający
+   .hidden (np. przy przełączaniu widoku Trash) nic by nie ukrył. */
+.filter-bar[hidden] {
+  display: none;
+}
+
 .filter-chip {
   padding: 0.3rem 0.7rem;
   font-size: 0.78rem;
