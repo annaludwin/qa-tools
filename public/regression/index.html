@@ -13,10 +13,15 @@
       <p class="subtitle"><a href="/">← QA Tools</a></p>
     </header>
 
+    <div class="tab-nav" id="suite-tabs">
+      <button class="tab-btn" data-suite="manual">Manual</button>
+      <button class="tab-btn" data-suite="e2e">E2E</button>
+    </div>
+
     <div class="toolbar">
       <button id="add-testcase-btn" class="toolbar-btn toolbar-btn-secondary">+ Add Test Case</button>
       <button id="generate-report-btn" class="toolbar-btn toolbar-btn-primary">Generate Report</button>
-      <a href="report.html" target="_blank" rel="noopener" class="toolbar-btn toolbar-btn-secondary">View Report History</a>
+      <a id="report-history-link" href="report.html?suite=manual" target="_blank" rel="noopener" class="toolbar-btn toolbar-btn-secondary">View Report History</a>
       <button id="clear-results-btn" class="toolbar-btn toolbar-btn-danger">Clear Results</button>
     </div>
 

@@ -1,7 +1,13 @@
 const listEl = document.getElementById("report-list");
 const viewEl = document.getElementById("report-view");
+const suiteTabsEl = document.getElementById("suite-tabs");
+const backLink = document.getElementById("back-link");
 
-let selectedId = new URLSearchParams(window.location.search).get("id");
+const initialParams = new URLSearchParams(window.location.search);
+let selectedId = initialParams.get("id");
+let currentSuite = initialParams.get("suite") === "e2e" ? "e2e" : "manual";
+
+const SUITE_LABELS = { manual: "Manual", e2e: "E2E" };
 
 const STATUS_LABELS = {
   untested: "Untested",
@@ -19,8 +25,26 @@ function formatDate(iso) {
   });
 }
 
+function applySuiteUI() {
+  for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
+    btn.classList.toggle("active", btn.dataset.suite === currentSuite);
+  }
+  backLink.href = `index.html?suite=${currentSuite}`;
+  history.replaceState(null, "", `report.html?suite=${currentSuite}`);
+}
+
+function switchSuite(suite) {
+  if (suite === currentSuite) {
+    return;
+  }
+  currentSuite = suite;
+  selectedId = null;
+  applySuiteUI();
+  loadReportList();
+}
+
 async function loadReportList() {
-  const res = await fetch("/api/regression/reports");
+  const res = await fetch(`/api/regression/reports?suite=${currentSuite}`);
   const reports = await res.json();
   renderList(reports);
 
@@ -31,7 +55,7 @@ async function loadReportList() {
   if (selectedId) {
     await selectReport(selectedId);
   } else {
-    viewEl.innerHTML = `<p class="empty-state">No reports yet. Generate one from the main page.</p>`;
+    viewEl.innerHTML = `<p class="empty-state">No ${SUITE_LABELS[currentSuite]} reports yet. Generate one from the main page.</p>`;
   }
 }
 
@@ -65,7 +89,7 @@ function renderList(reports) {
 
 async function selectReport(id) {
   selectedId = id;
-  history.replaceState(null, "", `report.html?id=${id}`);
+  history.replaceState(null, "", `report.html?id=${id}&suite=${currentSuite}`);
   highlightActiveInList(id);
 
   const res = await fetch(`/api/regression/reports/${id}`);
@@ -90,7 +114,7 @@ function renderReport(report) {
   header.className = "report-header";
   header.innerHTML = `
     <div>
-      <h2>Report</h2>
+      <h2>${SUITE_LABELS[report.type] ?? report.type} Report</h2>
       <p class="report-generated-at">Generated: ${formatDate(report.generatedAt)}</p>
     </div>
     <button id="print-btn" class="toolbar-btn toolbar-btn-primary no-print">Print / Save as PDF</button>
@@ -150,4 +174,9 @@ function statTile(label, value, status) {
   return tile;
 }
 
+for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
+  btn.addEventListener("click", () => switchSuite(btn.dataset.suite));
+}
+
+applySuiteUI();
 loadReportList();

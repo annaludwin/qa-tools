@@ -4,7 +4,7 @@ import type { TestCase } from "./types.ts";
 // Służy wyłącznie jako dane początkowe (seed) dla data/testCases.json przy
 // pierwszym uruchomieniu — właściwym źródłem prawdy w czasie działania
 // aplikacji jest testCaseStore.ts.
-export const seedTestCases: TestCase[] = [
+export const seedTestCases: Omit<TestCase, "automated">[] = [
   {
     "id": "ST-LP-001",
     "section": "1. LANDING PAGE",

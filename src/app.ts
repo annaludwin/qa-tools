@@ -17,17 +17,19 @@ import { normalizeUrl } from "./seo/url.ts";
 import { addEntry, getEntry, listSummaries as listSeoHistory } from "./seo/storage.ts";
 
 // ── Regression Test Suite ────────────────────────────────────
-import { readAll, getById, create, update, remove } from "./regression/testCaseStore.ts";
+import { readAll, getById, create, update, remove, setAutomated } from "./regression/testCaseStore.ts";
 import type { TestCaseInput } from "./regression/testCaseStore.ts";
-import { getResult, readResults, setResult, clearResults, deleteResult } from "./regression/storage.ts";
+import { manualResults, e2eResults } from "./regression/storage.ts";
 import { addReport, getReport, listSummaries as listReports } from "./regression/reports.ts";
 import type {
   Priority,
   ReportResultEntry,
   StatusCounts,
+  TestCase,
   TestCaseDetail,
   TestCaseSummary,
   TestStatus,
+  TestSuite,
 } from "./regression/types.ts";
 
 const app = express();
@@ -141,6 +143,22 @@ app.get("/api/seo/history/:id", async (req, res) => {
 
 const VALID_STATUSES: TestStatus[] = ["pass", "fail", "not supported"];
 const VALID_PRIORITIES: Priority[] = ["HIGH", "MEDIUM", "LOW"];
+const VALID_SUITES: TestSuite[] = ["manual", "e2e"];
+
+/** Parsuje parametr `suite` z query (domyślnie "manual" — kompatybilność wstecz). */
+function parseSuite(value: unknown): TestSuite {
+  return typeof value === "string" && VALID_SUITES.includes(value as TestSuite) ? (value as TestSuite) : "manual";
+}
+
+/** Magazyn wyników odpowiadający danemu suite'owi. */
+function resultsStoreFor(suite: TestSuite) {
+  return suite === "e2e" ? e2eResults : manualResults;
+}
+
+/** Magazyn wyników odpowiadający aktualnej flagzie automated danego test case'a. */
+function resultsStoreForTestCase(testCase: TestCase) {
+  return resultsStoreFor(testCase.automated ? "e2e" : "manual");
+}
 
 /** Parsuje i waliduje dane test case'a z body żądania (POST/PUT). Zwraca komunikat błędu albo dane. */
 function parseTestCaseInput(body: unknown): { data: TestCaseInput } | { error: string } {
@@ -173,13 +191,15 @@ function parseTestCaseInput(body: unknown): { data: TestCaseInput } | { error: s
   return { data: { section, title, priority, platforms, preconditions, steps, expectedResult } };
 }
 
-/** Lista test case'ów z ich aktualnym statusem (do lewej kolumny). */
-app.get("/api/regression/testcases", async (_req, res) => {
+/** Lista test case'ów danego suite'u (manual/e2e) z ich aktualnym statusem (do lewej kolumny). */
+app.get("/api/regression/testcases", async (req, res) => {
   try {
-    const testCases = await readAll();
+    const suite = parseSuite(req.query.suite);
+    const results = resultsStoreFor(suite);
+    const testCases = await readAll(suite);
     const summaries: TestCaseSummary[] = await Promise.all(
       testCases.map(async (tc) => {
-        const result = await getResult(tc.id);
+        const result = await results.getResult(tc.id);
         return { id: tc.id, section: tc.section, title: tc.title, status: result?.status ?? "untested" };
       }),
     );
@@ -198,7 +218,7 @@ app.get("/api/regression/testcases/:id", async (req, res) => {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
 
-    const result = await getResult(testCase.id);
+    const result = await resultsStoreForTestCase(testCase).getResult(testCase.id);
     const detail: TestCaseDetail = { ...testCase, status: result?.status ?? "untested" };
     return res.json(detail);
   } catch (err) {
@@ -242,14 +262,14 @@ app.put("/api/regression/testcases/:id", async (req, res) => {
   }
 });
 
-/** Usuwa test case razem z jego zapisanym wynikiem (jeśli istniał). */
+/** Usuwa test case razem z jego zapisanymi wynikami (manual i e2e, jeśli istniały). */
 app.delete("/api/regression/testcases/:id", async (req, res) => {
   try {
     const removed = await remove(req.params.id);
     if (!removed) {
       return res.status(404).json({ error: "No test case found with the given id." });
     }
-    await deleteResult(req.params.id);
+    await Promise.all([manualResults.deleteResult(req.params.id), e2eResults.deleteResult(req.params.id)]);
     return res.status(204).end();
   } catch (err) {
     console.error("Error deleting test case:", err);
@@ -257,7 +277,7 @@ app.delete("/api/regression/testcases/:id", async (req, res) => {
   }
 });
 
-/** Zapisuje wynik wykonania testu. */
+/** Zapisuje wynik wykonania testu (do magazynu odpowiadającego aktualnej fladze automated). */
 app.post("/api/regression/testcases/:id/result", async (req, res) => {
   const testCase = await getById(req.params.id);
   if (!testCase) {
@@ -270,7 +290,7 @@ app.post("/api/regression/testcases/:id/result", async (req, res) => {
   }
 
   try {
-    const result = await setResult(testCase.id, status as TestStatus);
+    const result = await resultsStoreForTestCase(testCase).setResult(testCase.id, status as TestStatus);
     return res.json(result);
   } catch (err) {
     console.error("Error saving test result:", err);
@@ -278,10 +298,39 @@ app.post("/api/regression/testcases/:id/result", async (req, res) => {
   }
 });
 
-/** Czyści wszystkie zapisane wyniki — test case'y wracają do statusu "untested". */
-app.post("/api/regression/results/clear", async (_req, res) => {
+/** Oznacza test case jako zautomatyzowany — przenosi go z zakładki Manual do E2E. */
+app.post("/api/regression/testcases/:id/automate", async (req, res) => {
   try {
-    await clearResults();
+    const testCase = await setAutomated(req.params.id, true);
+    if (!testCase) {
+      return res.status(404).json({ error: "No test case found with the given id." });
+    }
+    return res.json(testCase);
+  } catch (err) {
+    console.error("Error marking test case as automated:", err);
+    return res.status(500).json({ error: "Failed to mark the test case as automated." });
+  }
+});
+
+/** Cofa oznaczenie automatyzacji — przenosi test case z powrotem do zakładki Manual. */
+app.post("/api/regression/testcases/:id/unautomate", async (req, res) => {
+  try {
+    const testCase = await setAutomated(req.params.id, false);
+    if (!testCase) {
+      return res.status(404).json({ error: "No test case found with the given id." });
+    }
+    return res.json(testCase);
+  } catch (err) {
+    console.error("Error unmarking test case as automated:", err);
+    return res.status(500).json({ error: "Failed to move the test case back to manual." });
+  }
+});
+
+/** Czyści wszystkie zapisane wyniki danego suite'u — test case'y wracają do statusu "untested". */
+app.post("/api/regression/results/clear", async (req, res) => {
+  try {
+    const suite = parseSuite(req.query.suite ?? req.body?.suite);
+    await resultsStoreFor(suite).clearResults();
     return res.status(204).end();
   } catch (err) {
     console.error("Error clearing results:", err);
@@ -289,11 +338,12 @@ app.post("/api/regression/results/clear", async (_req, res) => {
   }
 });
 
-/** Generuje raport: snapshot aktualnych statusów wszystkich test case'ów, zapisuje go do historii. */
-app.post("/api/regression/reports", async (_req, res) => {
+/** Generuje raport: snapshot aktualnych statusów test case'ów danego suite'u, zapisuje go do historii. */
+app.post("/api/regression/reports", async (req, res) => {
   try {
-    const testCases = await readAll();
-    const results = await readResults();
+    const suite = parseSuite(req.query.suite ?? req.body?.suite);
+    const testCases = await readAll(suite);
+    const results = await resultsStoreFor(suite).readResults();
 
     const summary: StatusCounts = { untested: 0, pass: 0, fail: 0, "not supported": 0 };
     const entries: ReportResultEntry[] = testCases.map((tc) => {
@@ -302,7 +352,7 @@ app.post("/api/regression/reports", async (_req, res) => {
       return { id: tc.id, section: tc.section, title: tc.title, status };
     });
 
-    const report = await addReport({ summary, results: entries });
+    const report = await addReport({ type: suite, summary, results: entries });
     return res.status(201).json(report);
   } catch (err) {
     console.error("Error generating report:", err);
@@ -310,10 +360,11 @@ app.post("/api/regression/reports", async (_req, res) => {
   }
 });
 
-/** Lista historycznych raportów (skróty, najnowsze pierwsze). */
-app.get("/api/regression/reports", async (_req, res) => {
+/** Lista historycznych raportów danego suite'u (skróty, najnowsze pierwsze). */
+app.get("/api/regression/reports", async (req, res) => {
   try {
-    const summaries = await listReports();
+    const suite = parseSuite(req.query.suite);
+    const summaries = await listReports(suite);
     return res.json(summaries);
   } catch (err) {
     console.error("Error reading report history:", err);

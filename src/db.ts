@@ -43,11 +43,20 @@ export async function initSchema(): Promise<void> {
       updated_at timestamptz NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS regression_results_e2e (
+      test_case_id text PRIMARY KEY,
+      status text NOT NULL,
+      updated_at timestamptz NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS regression_reports (
       id text PRIMARY KEY,
       generated_at timestamptz NOT NULL,
       summary jsonb NOT NULL,
       results jsonb NOT NULL
     );
+
+    ALTER TABLE regression_test_cases ADD COLUMN IF NOT EXISTS automated boolean NOT NULL DEFAULT false;
+    ALTER TABLE regression_reports ADD COLUMN IF NOT EXISTS type text NOT NULL DEFAULT 'manual';
   `);
 }

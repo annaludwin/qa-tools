@@ -43,6 +43,38 @@ h1 {
   color: var(--accent);
 }
 
+/* ── Zakładki Manual / E2E ─────────────────────────────── */
+.tab-nav {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 0 1.25rem 1rem;
+}
+
+.tab-btn {
+  padding: 0.55rem 1.3rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--card-2);
+  background: var(--card);
+  color: var(--muted);
+  cursor: pointer;
+  transition: opacity 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  opacity: 0.85;
+}
+
+.tab-btn.active {
+  color: #0f172a;
+  border-color: transparent;
+  background: var(--accent);
+}
+
 /* ── Pasek narzędzi (raport, czyszczenie wyników) ─────── */
 .toolbar {
   display: flex;

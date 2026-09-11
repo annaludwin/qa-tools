@@ -5,10 +5,15 @@ const clearResultsBtn = document.getElementById("clear-results-btn");
 const addTestCaseBtn = document.getElementById("add-testcase-btn");
 const filterBarEl = document.getElementById("status-filter");
 const sectionOptionsEl = document.getElementById("section-options");
+const suiteTabsEl = document.getElementById("suite-tabs");
+const reportHistoryLink = document.getElementById("report-history-link");
 
 let selectedId = null;
 let allTestCases = [];
 const activeStatuses = new Set(["untested", "pass", "fail", "not supported"]);
+
+const SUITE_LABELS = { manual: "Manual", e2e: "E2E" };
+let currentSuite = new URLSearchParams(window.location.search).get("suite") === "e2e" ? "e2e" : "manual";
 
 const STATUS_LABELS = {
   untested: "Untested",
@@ -19,8 +24,30 @@ const STATUS_LABELS = {
 
 const PLATFORM_OPTIONS = ["Desktop", "Mobile", "Tablet"];
 
+/** Odświeża widoczność elementów zależnych od aktywnej zakładki (Manual/E2E). */
+function applySuiteUI() {
+  for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
+    btn.classList.toggle("active", btn.dataset.suite === currentSuite);
+  }
+  // Nowy test case zawsze startuje jako manualny — automatyzacja to osobna akcja.
+  addTestCaseBtn.hidden = currentSuite === "e2e";
+  reportHistoryLink.href = `report.html?suite=${currentSuite}`;
+  history.replaceState(null, "", `index.html?suite=${currentSuite}`);
+}
+
+function switchSuite(suite) {
+  if (suite === currentSuite) {
+    return;
+  }
+  currentSuite = suite;
+  selectedId = null;
+  applySuiteUI();
+  previewEl.innerHTML = `<p class="empty-state">Select a test case on the left to see its details.</p>`;
+  loadTestCaseList();
+}
+
 async function loadTestCaseList() {
-  const res = await fetch("/api/regression/testcases");
+  const res = await fetch(`/api/regression/testcases?suite=${currentSuite}`);
   allTestCases = await res.json();
   renderList(filterTestCases(allTestCases));
   renderSectionOptions(allTestCases);
@@ -97,15 +124,18 @@ function renderPreview(testCase) {
 
   const header = document.createElement("div");
   header.className = "preview-header";
+  const automateLabel = testCase.automated ? "Move back to Manual" : "Mark as automated";
   header.innerHTML = `
     <h2></h2>
     <div class="preview-header-actions">
       <span class="status-badge" data-status="${testCase.status}">${STATUS_LABELS[testCase.status]}</span>
+      <button class="icon-btn" id="automate-testcase-btn" title="${automateLabel}">${automateLabel}</button>
       <button class="icon-btn" id="edit-testcase-btn" title="Edit">Edit</button>
       <button class="icon-btn icon-btn-danger" id="delete-testcase-btn" title="Delete">Delete</button>
     </div>
   `;
   header.querySelector("h2").textContent = testCase.title;
+  header.querySelector("#automate-testcase-btn").addEventListener("click", () => toggleAutomated(testCase));
   header.querySelector("#edit-testcase-btn").addEventListener("click", () => renderTestCaseForm(testCase));
   header.querySelector("#delete-testcase-btn").addEventListener("click", () => deleteTestCase(testCase.id));
   previewEl.appendChild(header);
@@ -349,6 +379,29 @@ async function deleteTestCase(id) {
   await loadTestCaseList();
 }
 
+async function toggleAutomated(testCase) {
+  const willAutomate = !testCase.automated;
+  const confirmed = window.confirm(
+    willAutomate
+      ? "Mark this test case as automated? It will move to the E2E tab and start with a fresh (untested) result there — its Manual result history stays untouched."
+      : "Move this test case back to Manual? It will move to the Manual tab.",
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const res = await fetch(`/api/regression/testcases/${testCase.id}/${willAutomate ? "automate" : "unautomate"}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    return;
+  }
+
+  selectedId = null;
+  previewEl.innerHTML = `<p class="empty-state">Moved to the ${SUITE_LABELS[willAutomate ? "e2e" : "manual"]} tab.</p>`;
+  await loadTestCaseList();
+}
+
 function escapeHtml(value) {
   const div = document.createElement("div");
   div.textContent = value;
@@ -358,12 +411,12 @@ function escapeHtml(value) {
 async function generateReport() {
   generateReportBtn.disabled = true;
   try {
-    const res = await fetch("/api/regression/reports", { method: "POST" });
+    const res = await fetch(`/api/regression/reports?suite=${currentSuite}`, { method: "POST" });
     if (!res.ok) {
       return;
     }
     const report = await res.json();
-    window.open(`report.html?id=${report.id}`, "_blank");
+    window.open(`report.html?id=${report.id}&suite=${currentSuite}`, "_blank");
   } finally {
     generateReportBtn.disabled = false;
   }
@@ -371,13 +424,13 @@ async function generateReport() {
 
 async function clearResults() {
   const confirmed = window.confirm(
-    "Clear all test results? Every test case will go back to Untested. This cannot be undone.",
+    `Clear all ${SUITE_LABELS[currentSuite]} test results? Every test case will go back to Untested. This cannot be undone.`,
   );
   if (!confirmed) {
     return;
   }
 
-  const res = await fetch("/api/regression/results/clear", { method: "POST" });
+  const res = await fetch(`/api/regression/results/clear?suite=${currentSuite}`, { method: "POST" });
   if (!res.ok) {
     return;
   }
@@ -405,5 +458,9 @@ addTestCaseBtn.addEventListener("click", () => renderTestCaseForm(null));
 for (const chip of filterBarEl.querySelectorAll(".filter-chip")) {
   chip.addEventListener("click", () => toggleStatusFilter(chip));
 }
+for (const btn of suiteTabsEl.querySelectorAll(".tab-btn")) {
+  btn.addEventListener("click", () => switchSuite(btn.dataset.suite));
+}
 
+applySuiteUI();
 loadTestCaseList();

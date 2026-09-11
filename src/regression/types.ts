@@ -2,6 +2,9 @@ export type Priority = "HIGH" | "MEDIUM" | "LOW";
 
 export type TestStatus = "untested" | "pass" | "fail" | "not supported";
 
+/** Który zestaw test case'ów: manualne czy zautomatyzowane (e2e). */
+export type TestSuite = "manual" | "e2e";
+
 export interface TestCase {
   id: string;
   /** Nazwa sekcji, do której należy test case (grupowanie na liście). */
@@ -12,6 +15,8 @@ export interface TestCase {
   preconditions: string;
   steps: string[];
   expectedResult: string[];
+  /** Czy test case został zautomatyzowany (e2e) — decyduje, w której zakładce się pojawia. */
+  automated: boolean;
 }
 
 /** Zapisany wynik wykonania testu. */
@@ -45,11 +50,12 @@ export interface ReportResultEntry {
   status: TestStatus;
 }
 
-/** Pełny raport: snapshot wyników wszystkich test case'ów w danym momencie. */
+/** Pełny raport: snapshot wyników wszystkich test case'ów danego suite'u w danym momencie. */
 export interface Report {
   id: string;
   /** Data wygenerowania raportu w formacie ISO. */
   generatedAt: string;
+  type: TestSuite;
   summary: StatusCounts;
   results: ReportResultEntry[];
 }
@@ -58,5 +64,6 @@ export interface Report {
 export interface ReportSummary {
   id: string;
   generatedAt: string;
+  type: TestSuite;
   summary: StatusCounts;
 }
